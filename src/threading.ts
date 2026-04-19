@@ -425,18 +425,18 @@ function linkBySubjectFallback(map: Map<string, Container>): void {
       continue;
     }
 
-    const subject = normalize(container.email.subject ?? "");
+    const subjectKey = normalize(container.email.subject ?? "").toLowerCase();
 
-    if (!subject) {
+    if (!subjectKey) {
       continue;
     }
 
-    const list = bySubject.get(subject);
+    const list = bySubject.get(subjectKey);
 
     if (list) {
       list.push(container);
     } else {
-      bySubject.set(subject, [container]);
+      bySubject.set(subjectKey, [container]);
     }
   }
 
@@ -679,14 +679,14 @@ function findMatchingThread(
     }
   }
 
-  const subject = normalize(email.subject ?? "");
+  const subjectKey = normalize(email.subject ?? "").toLowerCase();
 
-  if (!subject) {
+  if (!subjectKey) {
     return undefined;
   }
 
   for (const thread of threads) {
-    if (!thread.subject || thread.subject !== subject) {
+    if (!thread.subject || thread.subject.toLowerCase() !== subjectKey) {
       continue;
     }
 

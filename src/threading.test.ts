@@ -411,6 +411,24 @@ describe("buildThreads — subject fallback", () => {
     expect(threads[0]?.messageCount).toBe(2);
   });
 
+  it("matches case-insensitively on the subject key", () => {
+    const a = makeEmail({
+      messageId: "<a@x>",
+      subject: "Planning Sync",
+      date: new Date("2026-04-19T00:00:00Z"),
+    });
+    const b = makeEmail({
+      messageId: "<b@x>",
+      subject: "re: PLANNING sync",
+      date: new Date("2026-04-20T00:00:00Z"),
+    });
+
+    const threads = buildThreads([a, b]);
+
+    expect(threads).toHaveLength(1);
+    expect(threads[0]?.messageCount).toBe(2);
+  });
+
   it("does NOT group when the subjects differ after normalization", () => {
     const a = makeEmail({
       messageId: "<a@x>",

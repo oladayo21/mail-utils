@@ -18,6 +18,8 @@ describe("normalizeSubject — reply prefixes", () => {
     // alias too broadly (e.g. "r: rocket" would lose its first word).
     ["Antw: hallo", "hallo"], // Dutch
     ["Odp: cześć", "cześć"], // Polish
+    ["Sv: hej", "hej"], // Swedish
+    ["SV: hej", "hej"],
   ])("strips %s", (input, expected) => {
     expect(normalizeSubject(input)).toBe(expected);
   });
@@ -34,6 +36,7 @@ describe("normalizeSubject — forward prefixes", () => {
     ["Enc: olá", "olá"], // Portuguese
     ["Doorst: hallo", "hallo"], // Dutch
     ["PD: cześć", "cześć"], // Polish
+    ["Vs: hej", "hej"], // Swedish
   ])("strips %s", (input, expected) => {
     expect(normalizeSubject(input)).toBe(expected);
   });

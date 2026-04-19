@@ -15,11 +15,11 @@
 // launch", and the languages that use them also accept the longer
 // forms in practice.
 const REPLY_PREFIX =
-  /^(re\s*\[\d+\]|re|aw|r[ée]p|r[ée]|rv|ref|antw|odp)\s*:\s*/i;
+  /^(re\s*\[\d+\]|re|aw|r[ée]p|r[ée]|rv|ref|antw|odp|sv)\s*:\s*/i;
 
 // Forward prefixes across the same languages.
 const FORWARD_PREFIX =
-  /^(fwd?|wg|tr|rif|enc|doorst|pd)\s*:\s*/i;
+  /^(fwd?|wg|tr|rif|enc|doorst|pd|vs)\s*:\s*/i;
 
 // [EXT], [EXTERNAL], [SPAM], [SUSPICIOUS], etc.
 const BRACKET_PREFIX = /^\[[^\]]+\]\s*/;
