@@ -35,3 +35,9 @@ export {
 } from "./addressing.ts";
 
 export { extractThreadingHeaders, parseMessage } from "./parsing.ts";
+
+export {
+  extractBody,
+  isInlineAttachment,
+  listAttachments,
+} from "./content.ts";
