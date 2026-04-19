@@ -101,6 +101,96 @@ export type ParsedEmail = {
 };
 
 /**
+ * A composed outbound message produced by {@link createReply},
+ * {@link createReplyAll}, {@link createForward}, or
+ * {@link createDraft}.
+ *
+ * `raw` contains the RFC 5322 serialized form and is ready to hand to
+ * any SMTP-capable transport. It intentionally **excludes** the `Bcc:`
+ * header — BCC recipients are exposed only through the structured
+ * `bcc` field so callers can drive envelope-level delivery without
+ * leaking the BCC list to other recipients.
+ */
+export type ComposedMessage = {
+  /** Freshly generated Message-ID including angle brackets. */
+  readonly messageId: string;
+  /** Set for replies; omitted for forwards and fresh drafts. */
+  readonly inReplyTo?: string | undefined;
+  /** Full `References` chain, truncated per {@link buildReferences}'s 20-entry cap. */
+  readonly references: readonly string[];
+  /** Subject as it will appear on the wire. */
+  readonly subject: string;
+  /** Sender. */
+  readonly from: EmailAddress;
+  /** Primary recipients. */
+  readonly to: readonly EmailAddress[];
+  /** Carbon-copy recipients. */
+  readonly cc: readonly EmailAddress[];
+  /** BCC recipients. **Never appear in `raw`** — use this field to drive envelope delivery. */
+  readonly bcc: readonly EmailAddress[];
+  /** HTML body, when present. */
+  readonly html?: string | undefined;
+  /** Plain-text body, when present. */
+  readonly text?: string | undefined;
+  /** Attachments copied into the outgoing MIME body. */
+  readonly attachments: readonly Attachment[];
+  /** RFC 5322 formatted string with CRLF line endings; excludes `Bcc:` — see {@link ComposedMessage.bcc}. */
+  readonly raw: string;
+};
+
+/**
+ * HTML and plain-text body parts for an outgoing message. At least
+ * one side should be populated for a sendable message; both-empty is
+ * accepted (mostly useful for "quote-only" replies).
+ */
+export type MessageBody = {
+  /** HTML body. */
+  readonly html?: string | undefined;
+  /** Plain-text body. */
+  readonly text?: string | undefined;
+};
+
+/** Options for {@link createReply} and {@link createReplyAll}. */
+export type ReplyOptions = {
+  /** Who the reply is from. */
+  readonly from: EmailAddress;
+  /** User-authored body that will sit above the quoted original. */
+  readonly body: MessageBody;
+  /** Addresses to strip from every recipient list (e.g. your own). */
+  readonly excludeAddresses?: readonly string[] | undefined;
+};
+
+/** Options for {@link createForward}. */
+export type ForwardOptions = {
+  /** Who the forward is from. */
+  readonly from: EmailAddress;
+  /** Primary recipients. */
+  readonly to: readonly EmailAddress[];
+  /** Optional carbon-copy recipients. */
+  readonly cc?: readonly EmailAddress[] | undefined;
+  /** Optional user note to insert above the forwarded block. */
+  readonly body?: MessageBody | undefined;
+};
+
+/** Options for {@link createDraft} — a brand-new, non-threaded message. */
+export type DraftOptions = {
+  /** Who the draft is from. */
+  readonly from: EmailAddress;
+  /** Primary recipients. Defaults to empty. */
+  readonly to?: readonly EmailAddress[] | undefined;
+  /** Carbon-copy recipients. Defaults to empty. */
+  readonly cc?: readonly EmailAddress[] | undefined;
+  /** Blind carbon-copy recipients. Never serialized into `raw`. */
+  readonly bcc?: readonly EmailAddress[] | undefined;
+  /** Subject. Defaults to empty. */
+  readonly subject?: string | undefined;
+  /** User-authored body. */
+  readonly body?: MessageBody | undefined;
+  /** Attachments. Each must carry `content` at serialization time. */
+  readonly attachments?: readonly Attachment[] | undefined;
+};
+
+/**
  * The subset of {@link ParsedEmail} fields needed to determine thread
  * membership. Extract via {@link extractThreadingHeaders} when you only
  * need to make threading decisions without holding the full record.

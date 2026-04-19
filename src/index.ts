@@ -19,8 +19,12 @@
 
 export type {
   Attachment,
+  ComposedMessage,
+  DraftOptions,
   EmailAddress,
+  ForwardOptions,
   ParsedEmail,
+  ReplyOptions,
   Thread,
   ThreadingHeaders,
   ThreadNode,
@@ -51,3 +55,13 @@ export {
   isOrphanId,
   normalizeSubject,
 } from "./threading.ts";
+
+export {
+  buildReferences,
+  createDraft,
+  createForward,
+  createReply,
+  createReplyAll,
+  generateMessageId,
+  quoteBody,
+} from "./composition.ts";

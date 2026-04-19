@@ -43,6 +43,24 @@ const MAX_ITERATIONS = 10;
  * @param subject Raw subject. Non-string input returns `""`.
  * @returns Trimmed subject with every leading prefix removed.
  */
+/** True when `subject` already starts with a reply prefix. */
+export function hasReplyPrefix(subject: string): boolean {
+  if (typeof subject !== "string") {
+    return false;
+  }
+
+  return REPLY_PREFIX.test(subject.trim());
+}
+
+/** True when `subject` already starts with a forward prefix. */
+export function hasForwardPrefix(subject: string): boolean {
+  if (typeof subject !== "string") {
+    return false;
+  }
+
+  return FORWARD_PREFIX.test(subject.trim());
+}
+
 export function normalizeSubject(subject: string): string {
   if (typeof subject !== "string") {
     return "";
