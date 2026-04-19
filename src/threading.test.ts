@@ -795,6 +795,68 @@ describe("buildThreads — Message-ID bracket normalization", () => {
     expect(threads[0]?.id).toBe("a@x");
   });
 
+  it("links through a References chain whose adjacent entries use mixed bracket styles", () => {
+    // The middle ancestor `<mid@x>` is only reachable via refs[0]→refs[1]
+    // chain linkage (c's In-Reply-To is the *last* ref, not the middle).
+    // Each adjacent pair in the refs list uses a different bracket style
+    // to force canonical comparison at every step of the chain walk.
+    const a = makeEmail({
+      messageId: "<a@x>",
+      subject: "Hi",
+      date: new Date("2026-04-19T00:00:00Z"),
+    });
+    const mid = makeEmail({
+      messageId: "<mid@x>",
+      inReplyTo: "a@x",
+      references: ["a@x"],
+      subject: "Re: Hi",
+      date: new Date("2026-04-19T01:00:00Z"),
+    });
+    const c = makeEmail({
+      messageId: "<c@x>",
+      inReplyTo: "mid@x",
+      references: ["<a@x>", "mid@x"],
+      subject: "Re: Hi",
+      date: new Date("2026-04-19T02:00:00Z"),
+    });
+
+    const threads = buildThreads([a, mid, c]);
+
+    expect(threads).toHaveLength(1);
+    expect(threads[0]?.messageCount).toBe(3);
+    const midNode = threads[0]?.root.children[0];
+
+    expect(midNode?.messageId).toBe("<mid@x>");
+    expect(midNode?.children[0]?.messageId).toBe("<c@x>");
+  });
+
+  it("detects cycles across mixed bracket styles", () => {
+    // Each email names the other as its In-Reply-To, in a different
+    // bracket style. Without canonical cycle detection they'd appear
+    // to be independent links and one would silently lose its parent
+    // pointer or we'd emit an infinite tree.
+    const a = makeEmail({
+      messageId: "<a@x>",
+      inReplyTo: "b@x",
+      subject: "loop",
+      date: new Date("2026-04-19T00:00:00Z"),
+    });
+    const b = makeEmail({
+      messageId: "<b@x>",
+      inReplyTo: "<a@x>",
+      subject: "loop",
+      date: new Date("2026-04-19T01:00:00Z"),
+    });
+
+    const threads = buildThreads([a, b]);
+    const ids: string[] = [];
+
+    for (const t of threads) walkIds(t.root, (id) => ids.push(id));
+
+    expect(ids).toContain("<a@x>");
+    expect(ids).toContain("<b@x>");
+  });
+
   it("dedupes duplicate Message-IDs that differ only in bracket style", () => {
     const bracketed = makeEmail({
       messageId: "<dup@x>",
@@ -851,6 +913,28 @@ describe("buildThreads — subject fallback sender-overlap", () => {
       subject: "Re: Meeting",
       from: { address: "bob@x" },
       to: [{ address: "CHRIS@x" }],
+      date: new Date("2026-04-20T00:00:00Z"),
+    });
+
+    const threads = buildThreads([a, b]);
+
+    expect(threads).toHaveLength(1);
+    expect(threads[0]?.messageCount).toBe(2);
+  });
+
+  it("merges when the only shared participant appears via Bcc", () => {
+    const a = makeEmail({
+      messageId: "<a@x>",
+      subject: "Meeting",
+      from: { address: "alice@x" },
+      bcc: [{ address: "shared@x" }],
+      date: new Date("2026-04-19T00:00:00Z"),
+    });
+    const b = makeEmail({
+      messageId: "<b@x>",
+      subject: "Re: Meeting",
+      from: { address: "bob@x" },
+      to: [{ address: "shared@x" }],
       date: new Date("2026-04-20T00:00:00Z"),
     });
 
@@ -946,6 +1030,28 @@ describe("ingestIntoThreads — subject fallback sender-overlap", () => {
       subject: "Re: Meeting",
       from: { address: "charlie@x" },
       to: [{ address: "ALICE@x" }],
+      date: new Date("2026-04-20T00:00:00Z"),
+    });
+
+    const { affectedThreadId } = ingestIntoThreads(reply, existing);
+
+    expect(affectedThreadId).toBe("<root@x>");
+  });
+
+  it("matches when the only shared participant appears via Bcc on the incoming email", () => {
+    const root = makeEmail({
+      messageId: "<root@x>",
+      subject: "Meeting",
+      from: { address: "alice@x" },
+      to: [{ address: "bob@x" }],
+      date: new Date("2026-04-19T00:00:00Z"),
+    });
+    const existing = buildThreads([root]);
+    const reply = makeEmail({
+      messageId: "<r@x>",
+      subject: "Re: Meeting",
+      from: { address: "charlie@x" },
+      bcc: [{ address: "alice@x" }],
       date: new Date("2026-04-20T00:00:00Z"),
     });
 

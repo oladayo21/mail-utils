@@ -189,19 +189,14 @@ export function ingestIntoThreads(
 
 // ─── JWZ container implementation ────────────────────────────────────
 
+// `canonicalId` is the map key / comparison identity (brackets
+// stripped), so `<id@host>` in Message-ID still matches `id@host` in
+// In-Reply-To across systems that normalize one form but not the
+// other. `messageId` keeps whichever form arrived first, for output.
 interface Container {
-  // Display form of the Message-ID — what callers get back on
-  // ThreadNode.messageId / Thread.id. Preserves whichever form first
-  // created the container (usually bracketed RFC form).
   messageId: string;
-  // Canonical form (brackets + whitespace stripped) — the stable
-  // identity used as the map key and for every parent / cycle
-  // comparison. Lets `<id@host>` in Message-ID match `id@host` in
-  // In-Reply-To / References across mail systems that normalize one
-  // but not the other.
   canonicalId: string;
   email: ParsedEmail | undefined;
-  // Canonical form of parent's id; undefined for roots.
   parentCanonicalId: string | undefined;
   children: Container[];
 }
@@ -494,10 +489,10 @@ function linkBySubjectFallback(map: Map<string, Container>): void {
     // Earliest-dated member becomes the synthetic root for the group.
     group.sort(compareContainersByDate);
 
+    // Every container in `group` carries an email (filtered above), so
+    // .email is non-null on root and every candidate here.
     const root = group[0]!;
-    const rootParts = root.email
-      ? emailParticipantSet(root.email)
-      : undefined;
+    const rootParts = emailParticipantSet(root.email!);
 
     for (let i = 1; i < group.length; i++) {
       const candidate = group[i]!;
@@ -506,11 +501,7 @@ function linkBySubjectFallback(map: Map<string, Container>): void {
         continue;
       }
 
-      if (!rootParts || !candidate.email) {
-        continue;
-      }
-
-      const candParts = emailParticipantSet(candidate.email);
+      const candParts = emailParticipantSet(candidate.email!);
 
       if (!sharesAddress(rootParts, candParts)) {
         continue;
@@ -520,7 +511,6 @@ function linkBySubjectFallback(map: Map<string, Container>): void {
       root.children.push(candidate);
     }
   }
-
 }
 
 function emailParticipantSet(email: ParsedEmail): Set<string> {
