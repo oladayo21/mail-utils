@@ -21,7 +21,9 @@ export type {
   Attachment,
   EmailAddress,
   ParsedEmail,
+  Thread,
   ThreadingHeaders,
+  ThreadNode,
 } from "./types.ts";
 
 export {
@@ -41,3 +43,11 @@ export {
   isInlineAttachment,
   listAttachments,
 } from "./content.ts";
+
+export {
+  buildThreads,
+  getThreadId,
+  ingestIntoThreads,
+  isOrphanId,
+  normalizeSubject,
+} from "./threading.ts";
