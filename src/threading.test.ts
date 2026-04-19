@@ -393,15 +393,19 @@ describe("buildThreads — sibling sort", () => {
 });
 
 describe("buildThreads — subject fallback", () => {
-  it("groups messages with the same normalized subject within ±7 days", () => {
+  it("groups messages with the same normalized subject within ±7 days when participants overlap", () => {
     const a = makeEmail({
       messageId: "<a@x>",
       subject: "Planning sync",
+      from: { address: "ada@x" },
+      to: [{ address: "grace@x" }],
       date: new Date("2026-04-19T00:00:00Z"),
     });
     const b = makeEmail({
       messageId: "<b@x>",
       subject: "Re: Planning sync",
+      from: { address: "grace@x" },
+      to: [{ address: "ada@x" }],
       date: new Date("2026-04-20T00:00:00Z"),
     });
 
@@ -415,11 +419,15 @@ describe("buildThreads — subject fallback", () => {
     const a = makeEmail({
       messageId: "<a@x>",
       subject: "Planning Sync",
+      from: { address: "ada@x" },
+      to: [{ address: "grace@x" }],
       date: new Date("2026-04-19T00:00:00Z"),
     });
     const b = makeEmail({
       messageId: "<b@x>",
       subject: "re: PLANNING sync",
+      from: { address: "grace@x" },
+      to: [{ address: "ada@x" }],
       date: new Date("2026-04-20T00:00:00Z"),
     });
 
@@ -739,5 +747,210 @@ describe("ingestIntoThreads", () => {
     expect(threads[0]?.lastDate).toEqual(new Date("2026-04-19T02:00:00Z"));
     const addresses = threads[0]!.participants.map((p) => p.address).sort();
     expect(addresses).toEqual(["ada@x", "bob@x", "grace@x"]);
+  });
+});
+
+describe("buildThreads — Message-ID bracket normalization", () => {
+  it("links a reply whose In-Reply-To drops the brackets", () => {
+    const a = makeEmail({
+      messageId: "<a@x>",
+      subject: "Hi",
+      date: new Date("2026-04-19T00:00:00Z"),
+    });
+    const b = makeEmail({
+      messageId: "<b@x>",
+      inReplyTo: "a@x",
+      references: ["a@x"],
+      subject: "Re: Hi",
+      date: new Date("2026-04-19T01:00:00Z"),
+    });
+
+    const threads = buildThreads([a, b]);
+
+    expect(threads).toHaveLength(1);
+    expect(threads[0]?.id).toBe("<a@x>");
+    expect(threads[0]?.messageCount).toBe(2);
+    expect(threads[0]?.root.children[0]?.messageId).toBe("<b@x>");
+  });
+
+  it("links a reply whose Message-ID has brackets but parent's Message-ID doesn't", () => {
+    const a = makeEmail({
+      messageId: "a@x",
+      subject: "Hi",
+      date: new Date("2026-04-19T00:00:00Z"),
+    });
+    const b = makeEmail({
+      messageId: "<b@x>",
+      inReplyTo: "<a@x>",
+      references: ["<a@x>"],
+      subject: "Re: Hi",
+      date: new Date("2026-04-19T01:00:00Z"),
+    });
+
+    const threads = buildThreads([a, b]);
+
+    expect(threads).toHaveLength(1);
+    expect(threads[0]?.messageCount).toBe(2);
+    // Preserves the parent's original (bare) Message-ID as the thread id.
+    expect(threads[0]?.id).toBe("a@x");
+  });
+
+  it("dedupes duplicate Message-IDs that differ only in bracket style", () => {
+    const bracketed = makeEmail({
+      messageId: "<dup@x>",
+      subject: "dup",
+      text: "plain",
+      html: "<p>html</p>",
+    });
+    const bare = makeEmail({
+      messageId: "dup@x",
+      subject: "dup",
+      text: "plain",
+    });
+
+    const threads = buildThreads([bracketed, bare]);
+
+    expect(threads).toHaveLength(1);
+    expect(threads[0]?.messageCount).toBe(1);
+    expect(threads[0]?.root.email).toBe(bracketed);
+  });
+});
+
+describe("buildThreads — subject fallback sender-overlap", () => {
+  it("does NOT merge subjects when no participant is shared", () => {
+    const a = makeEmail({
+      messageId: "<a@x>",
+      subject: "Meeting",
+      from: { address: "team1-a@x" },
+      to: [{ address: "team1-b@x" }],
+      date: new Date("2026-04-19T00:00:00Z"),
+    });
+    const b = makeEmail({
+      messageId: "<b@x>",
+      subject: "Re: Meeting",
+      from: { address: "team2-a@x" },
+      to: [{ address: "team2-b@x" }],
+      date: new Date("2026-04-20T00:00:00Z"),
+    });
+
+    const threads = buildThreads([a, b]);
+
+    expect(threads).toHaveLength(2);
+  });
+
+  it("merges subjects when at least one participant is shared across to/cc/bcc/from", () => {
+    const a = makeEmail({
+      messageId: "<a@x>",
+      subject: "Meeting",
+      from: { address: "alice@x" },
+      cc: [{ address: "chris@x" }],
+      date: new Date("2026-04-19T00:00:00Z"),
+    });
+    const b = makeEmail({
+      messageId: "<b@x>",
+      subject: "Re: Meeting",
+      from: { address: "bob@x" },
+      to: [{ address: "CHRIS@x" }],
+      date: new Date("2026-04-20T00:00:00Z"),
+    });
+
+    const threads = buildThreads([a, b]);
+
+    expect(threads).toHaveLength(1);
+    expect(threads[0]?.messageCount).toBe(2);
+  });
+});
+
+describe("ingestIntoThreads — Message-ID bracket normalization", () => {
+  it("matches when existing thread id has brackets and incoming refs don't", () => {
+    const root = makeEmail({
+      messageId: "<root@x>",
+      subject: "Hi",
+      date: new Date("2026-04-19T00:00:00Z"),
+    });
+    const existing = buildThreads([root]);
+    const reply = makeEmail({
+      messageId: "<reply@x>",
+      inReplyTo: "root@x",
+      references: ["root@x"],
+      subject: "Re: Hi",
+      date: new Date("2026-04-19T01:00:00Z"),
+    });
+
+    const { threads, affectedThreadId } = ingestIntoThreads(reply, existing);
+
+    expect(affectedThreadId).toBe("<root@x>");
+    expect(threads[0]?.messageCount).toBe(2);
+    expect(threads[0]?.root.children[0]?.messageId).toBe("<reply@x>");
+  });
+
+  it("matches when existing thread id has no brackets and incoming refs do", () => {
+    const root = makeEmail({
+      messageId: "root@x",
+      subject: "Hi",
+      date: new Date("2026-04-19T00:00:00Z"),
+    });
+    const existing = buildThreads([root]);
+    const reply = makeEmail({
+      messageId: "<reply@x>",
+      inReplyTo: "<root@x>",
+      references: ["<root@x>"],
+      subject: "Re: Hi",
+      date: new Date("2026-04-19T01:00:00Z"),
+    });
+
+    const { affectedThreadId } = ingestIntoThreads(reply, existing);
+
+    expect(affectedThreadId).toBe("root@x");
+  });
+});
+
+describe("ingestIntoThreads — subject fallback sender-overlap", () => {
+  it("creates a new thread when the subject matches but no participant is shared", () => {
+    const root = makeEmail({
+      messageId: "<root@x>",
+      subject: "Meeting",
+      from: { address: "team1-a@x" },
+      to: [{ address: "team1-b@x" }],
+      date: new Date("2026-04-19T00:00:00Z"),
+    });
+    const existing = buildThreads([root]);
+    const unrelated = makeEmail({
+      messageId: "<u@x>",
+      subject: "Re: Meeting",
+      from: { address: "team2-a@x" },
+      to: [{ address: "team2-b@x" }],
+      date: new Date("2026-04-20T00:00:00Z"),
+    });
+
+    const { threads, affectedThreadId } = ingestIntoThreads(
+      unrelated,
+      existing,
+    );
+
+    expect(threads).toHaveLength(2);
+    expect(affectedThreadId).toBe("<u@x>");
+  });
+
+  it("matches when the subject and at least one participant overlap", () => {
+    const root = makeEmail({
+      messageId: "<root@x>",
+      subject: "Meeting",
+      from: { address: "alice@x" },
+      to: [{ address: "bob@x" }],
+      date: new Date("2026-04-19T00:00:00Z"),
+    });
+    const existing = buildThreads([root]);
+    const reply = makeEmail({
+      messageId: "<r@x>",
+      subject: "Re: Meeting",
+      from: { address: "charlie@x" },
+      to: [{ address: "ALICE@x" }],
+      date: new Date("2026-04-20T00:00:00Z"),
+    });
+
+    const { affectedThreadId } = ingestIntoThreads(reply, existing);
+
+    expect(affectedThreadId).toBe("<root@x>");
   });
 });
