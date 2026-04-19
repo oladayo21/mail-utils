@@ -28,16 +28,20 @@ Platform-agnostic TS utility library for email parsing, threading, composition. 
 
 ## Per-issue workflow
 
-After finishing implementation for an issue (before commit):
+**Never commit directly to `main`.** One branch per issue. One PR per branch. Merge only after the human approves.
 
-1. Run PR-review toolkit on the diff: invoke the `pr-review-toolkit:review-pr` skill.
-2. Run simplify on the diff: invoke the `simplify` skill.
-3. Address the findings — resolve or defend each one, don't ignore.
-4. Re-run typecheck + tests: `make typecheck && make test`.
-5. Commit with a changelog-style message (see `~/CLAUDE.md` PR rules — description is for humans).
-6. Close the corresponding issue in the commit trailer (`Closes #N`).
+For issue `#N`:
 
-Skip this workflow only for doc-only changes that touch no code.
+1. Branch from up-to-date `main`: `git checkout main && git pull && git checkout -b issue-N-<short-name>`.
+2. Implement. Commit often on the branch as needed.
+3. Run PR-review toolkit on the diff: invoke the `pr-review-toolkit:review-pr` skill.
+4. Run simplify on the diff: invoke the `simplify` skill.
+5. Address the findings — resolve or defend each one, don't ignore.
+6. Re-run typecheck + tests + JSR dry-run: `make typecheck && make test && make publish-jsr-dry`.
+7. Push the branch and open a PR via `gh pr create`. PR body follows `~/CLAUDE.md` rules (human-readable, no diff recap). Link the issue with `Closes #N` in the PR body so merging closes it.
+8. **Stop.** Wait for human review + merge. Do not self-merge.
+
+Skip this workflow only for doc-only changes that touch no code AND the human explicitly waives it.
 
 ## Commands
 
