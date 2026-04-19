@@ -110,3 +110,38 @@ export type ThreadingHeaders = {
   readonly inReplyTo?: string | undefined;
   readonly references: readonly string[];
 };
+
+/**
+ * A node in a thread tree. Every node has a `messageId` that identifies
+ * its position in the conversation; `email` is present when the actual
+ * message was available to the threader and absent when JWZ kept the
+ * node as a virtual root (a parent referenced by ≥2 children but not
+ * present in the input set).
+ */
+export type ThreadNode = {
+  /** The parsed email for this node, or `undefined` for a virtual root. */
+  readonly email?: ParsedEmail | undefined;
+  /** Message-ID this node represents. Always present, even for virtual roots. */
+  readonly messageId: string;
+  /** Direct replies to this node, sorted by date (dated first, then ascending). */
+  readonly children: readonly ThreadNode[];
+};
+
+/**
+ * A full conversation — the root of a {@link ThreadNode} tree plus
+ * aggregated metadata.
+ */
+export type Thread = {
+  /** Message-ID of the root, used as a stable thread identifier. */
+  readonly id: string;
+  /** Root node of the conversation tree. */
+  readonly root: ThreadNode;
+  /** Deduplicated union of every mailbox that appears in any message. */
+  readonly participants: readonly EmailAddress[];
+  /** Normalized subject of the root (RFC 2047 decoded, prefixes stripped). */
+  readonly subject?: string | undefined;
+  /** Most recent `Date:` across every message in the thread. */
+  readonly lastDate?: Date | undefined;
+  /** Count of nodes whose `email` is present (virtual roots excluded). */
+  readonly messageCount: number;
+};
