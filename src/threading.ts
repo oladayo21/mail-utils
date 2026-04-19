@@ -189,30 +189,53 @@ export function ingestIntoThreads(
 
 // ─── JWZ container implementation ────────────────────────────────────
 
+// `canonicalId` is the map key / comparison identity (brackets
+// stripped), so `<id@host>` in Message-ID still matches `id@host` in
+// In-Reply-To across systems that normalize one form but not the
+// other. `messageId` keeps whichever form arrived first, for output.
 interface Container {
   messageId: string;
+  canonicalId: string;
   email: ParsedEmail | undefined;
-  parentId: string | undefined;
+  parentCanonicalId: string | undefined;
   children: Container[];
 }
 
-function makeContainer(messageId: string): Container {
-  return { messageId, email: undefined, parentId: undefined, children: [] };
+// Strip surrounding whitespace and angle brackets from a Message-ID
+// for equality comparisons. Never mutates stored display ids.
+function canonicalMessageId(id: string): string {
+  let s = id.trim();
+
+  if (s.startsWith("<")) s = s.slice(1);
+  if (s.endsWith(">")) s = s.slice(0, -1);
+
+  return s.trim();
+}
+
+function makeContainer(messageId: string, canonicalId: string): Container {
+  return {
+    messageId,
+    canonicalId,
+    email: undefined,
+    parentCanonicalId: undefined,
+    children: [],
+  };
 }
 
 function ensureContainer(
   map: Map<string, Container>,
-  messageId: string,
+  rawId: string,
 ): Container {
-  const existing = map.get(messageId);
+  const key = canonicalMessageId(rawId);
+  const existing = map.get(key);
 
   if (existing) {
     return existing;
   }
 
-  const container = makeContainer(messageId);
+  const container = makeContainer(rawId, key);
 
-  map.set(messageId, container);
+  map.set(key, container);
 
   return container;
 }
@@ -273,21 +296,23 @@ function dedupeByMessageId(
 ): ParsedEmail[] {
   // Dedupe orphans by their synthesized id alongside real Message-IDs
   // so two orphans with identical hashable fields don't silently
-  // collide later in buildContainerMap.
+  // collide later in buildContainerMap. Keyed by canonical form so
+  // `<id@host>` and `id@host` count as the same message.
   const byId = new Map<string, ParsedEmail>();
 
   for (const email of emails) {
-    const id = email.messageId ?? synthesizeOrphanId(email);
-    const existing = byId.get(id);
+    const raw = email.messageId ?? synthesizeOrphanId(email);
+    const key = canonicalMessageId(raw);
+    const existing = byId.get(key);
 
     if (!existing) {
-      byId.set(id, email);
+      byId.set(key, email);
 
       continue;
     }
 
     if (candidateIsRicher(email, existing)) {
-      byId.set(id, email);
+      byId.set(key, email);
     }
   }
 
@@ -300,10 +325,14 @@ function buildContainerMap(
   const map = new Map<string, Container>();
 
   for (const email of emails) {
-    const id = email.messageId ?? synthesizeOrphanId(email);
-    const container = ensureContainer(map, id);
+    const rawId = email.messageId ?? synthesizeOrphanId(email);
+    const container = ensureContainer(map, rawId);
 
     container.email = email;
+    // Prefer the email's own Message-ID as the display form — even if
+    // the container was first created from a reference in a different
+    // bracket style.
+    container.messageId = rawId;
   }
 
   return map;
@@ -316,28 +345,35 @@ function linkByReferences(
   for (const email of emails) {
     linkReferenceChain(map, email.references);
 
-    const childId = email.messageId ?? synthesizeOrphanId(email);
-    const child = map.get(childId);
+    const childRawId = email.messageId ?? synthesizeOrphanId(email);
+    const childKey = canonicalMessageId(childRawId);
+    const child = map.get(childKey);
 
-    if (!child || child.parentId !== undefined) {
+    if (!child || child.parentCanonicalId !== undefined) {
       continue;
     }
 
-    const parentId = findParentId(email);
+    const parentRawId = findParentId(email);
 
-    if (!parentId || parentId === childId) {
+    if (!parentRawId) {
       continue;
     }
 
-    if (wouldCreateCycle(map, childId, parentId)) {
-      // Linking `child → parentId` would close a cycle; keep child a
+    const parentKey = canonicalMessageId(parentRawId);
+
+    if (parentKey === childKey) {
+      continue;
+    }
+
+    if (wouldCreateCycle(map, childKey, parentKey)) {
+      // Linking `child → parent` would close a cycle; keep child a
       // root rather than silently dropping it.
       continue;
     }
 
-    const parent = ensureContainer(map, parentId);
+    const parent = ensureContainer(map, parentRawId);
 
-    child.parentId = parentId;
+    child.parentCanonicalId = parentKey;
     parent.children.push(child);
   }
 }
@@ -352,44 +388,46 @@ function linkReferenceChain(
   refs: ReadonlyArray<string>,
 ): void {
   for (let i = 0; i < refs.length - 1; i++) {
-    const parentId = refs[i]!;
-    const childId = refs[i + 1]!;
+    const parentRawId = refs[i]!;
+    const childRawId = refs[i + 1]!;
+    const parentKey = canonicalMessageId(parentRawId);
+    const childKey = canonicalMessageId(childRawId);
 
-    if (parentId === childId) {
+    if (parentKey === childKey) {
       continue;
     }
 
-    const childContainer = ensureContainer(map, childId);
+    const childContainer = ensureContainer(map, childRawId);
 
-    if (childContainer.parentId !== undefined) {
+    if (childContainer.parentCanonicalId !== undefined) {
       continue;
     }
 
-    if (wouldCreateCycle(map, childId, parentId)) {
+    if (wouldCreateCycle(map, childKey, parentKey)) {
       continue;
     }
 
-    const parentContainer = ensureContainer(map, parentId);
+    const parentContainer = ensureContainer(map, parentRawId);
 
-    childContainer.parentId = parentId;
+    childContainer.parentCanonicalId = parentKey;
     parentContainer.children.push(childContainer);
   }
 }
 
-// Walks the existing parent chain starting at `parentId`; returns
-// `true` if it reaches `childId`, which would mean linking them
+// Walks the existing parent chain starting at `parentKey`; returns
+// `true` if it reaches `childKey`, which would mean linking them
 // closes a cycle. Also breaks out on any pre-existing cycle in the
 // map to stay finite.
 function wouldCreateCycle(
   map: Map<string, Container>,
-  childId: string,
-  parentId: string,
+  childKey: string,
+  parentKey: string,
 ): boolean {
   const visited = new Set<string>();
-  let cursor: string | undefined = parentId;
+  let cursor: string | undefined = parentKey;
 
   while (cursor !== undefined) {
-    if (cursor === childId) {
+    if (cursor === childKey) {
       return true;
     }
 
@@ -398,7 +436,7 @@ function wouldCreateCycle(
     }
 
     visited.add(cursor);
-    cursor = map.get(cursor)?.parentId;
+    cursor = map.get(cursor)?.parentCanonicalId;
   }
 
   return false;
@@ -417,11 +455,14 @@ function findParentId(email: ParsedEmail): string | undefined {
 
 function linkBySubjectFallback(map: Map<string, Container>): void {
   // Group candidate roots by normalized subject within a ±7-day window.
+  // Require at least one shared participant before merging — prevents
+  // unrelated teams sharing a generic subject ("Meeting", "Planning
+  // sync") from being stitched into one thread.
   const WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
   const bySubject = new Map<string, Container[]>();
 
   for (const container of map.values()) {
-    if (container.parentId !== undefined || !container.email) {
+    if (container.parentCanonicalId !== undefined || !container.email) {
       continue;
     }
 
@@ -448,7 +489,10 @@ function linkBySubjectFallback(map: Map<string, Container>): void {
     // Earliest-dated member becomes the synthetic root for the group.
     group.sort(compareContainersByDate);
 
+    // Every container in `group` carries an email (filtered above), so
+    // .email is non-null on root and every candidate here.
     const root = group[0]!;
+    const rootParts = emailParticipantSet(root.email!);
 
     for (let i = 1; i < group.length; i++) {
       const candidate = group[i]!;
@@ -457,11 +501,35 @@ function linkBySubjectFallback(map: Map<string, Container>): void {
         continue;
       }
 
-      candidate.parentId = root.messageId;
+      const candParts = emailParticipantSet(candidate.email!);
+
+      if (!sharesAddress(rootParts, candParts)) {
+        continue;
+      }
+
+      candidate.parentCanonicalId = root.canonicalId;
       root.children.push(candidate);
     }
   }
+}
 
+function emailParticipantSet(email: ParsedEmail): Set<string> {
+  const set = new Set<string>();
+
+  if (email.from) set.add(email.from.address.toLowerCase());
+  for (const a of email.to) set.add(a.address.toLowerCase());
+  for (const a of email.cc) set.add(a.address.toLowerCase());
+  for (const a of email.bcc) set.add(a.address.toLowerCase());
+
+  return set;
+}
+
+function sharesAddress(a: Set<string>, b: Set<string>): boolean {
+  for (const x of a) {
+    if (b.has(x)) return true;
+  }
+
+  return false;
 }
 
 function withinWindow(
@@ -483,7 +551,7 @@ function collectRoots(map: Map<string, Container>): Container[] {
   const roots: Container[] = [];
 
   for (const container of map.values()) {
-    if (container.parentId === undefined) {
+    if (container.parentCanonicalId === undefined) {
       roots.push(container);
     }
   }
@@ -516,7 +584,7 @@ function pruneEmptyContainers(node: Container): Container[] {
   if (prunedChildren.length === 1) {
     const only = prunedChildren[0]!;
 
-    only.parentId = undefined;
+    only.parentCanonicalId = undefined;
 
     return [only];
   }
@@ -664,17 +732,19 @@ function findMatchingThread(
   email: ParsedEmail,
   threads: ReadonlyArray<Thread>,
 ): Thread | undefined {
-  const candidateIds = new Set<string>();
+  const candidateKeys = new Set<string>();
 
-  if (email.inReplyTo) candidateIds.add(email.inReplyTo);
-  for (const r of email.references) candidateIds.add(r);
+  if (email.inReplyTo) candidateKeys.add(canonicalMessageId(email.inReplyTo));
+  for (const r of email.references) candidateKeys.add(canonicalMessageId(r));
 
-  if (candidateIds.size > 0) {
+  if (candidateKeys.size > 0) {
     const threadIds = collectAllMessageIds(threads);
 
-    for (const id of candidateIds) {
-      if (threadIds.has(id)) {
-        return threadById(threads, threadIds.get(id)!);
+    for (const key of candidateKeys) {
+      const threadId = threadIds.get(key);
+
+      if (threadId !== undefined) {
+        return threadById(threads, threadId);
       }
     }
   }
@@ -685,26 +755,39 @@ function findMatchingThread(
     return undefined;
   }
 
+  const emailParts = emailParticipantSet(email);
+
   for (const thread of threads) {
     if (!thread.subject || thread.subject.toLowerCase() !== subjectKey) {
       continue;
     }
 
-    if (datesWithinWindow(email.date, thread.lastDate)) {
-      return thread;
+    if (!datesWithinWindow(email.date, thread.lastDate)) {
+      continue;
     }
+
+    // Require ≥1 shared participant so unrelated threads sharing a
+    // generic subject don't merge on subject alone.
+    const threadParts = threadParticipantSet(thread);
+
+    if (!sharesAddress(emailParts, threadParts)) {
+      continue;
+    }
+
+    return thread;
   }
 
   return undefined;
 }
 
+// canonical Message-ID -> thread id (display form)
 function collectAllMessageIds(
   threads: ReadonlyArray<Thread>,
 ): Map<string, string> {
   const map = new Map<string, string>();
 
   function visit(threadId: string, node: ThreadNode): void {
-    map.set(node.messageId, threadId);
+    map.set(canonicalMessageId(node.messageId), threadId);
 
     for (const child of node.children) visit(threadId, child);
   }
@@ -714,6 +797,16 @@ function collectAllMessageIds(
   }
 
   return map;
+}
+
+function threadParticipantSet(thread: Thread): Set<string> {
+  const set = new Set<string>();
+
+  for (const p of thread.participants) {
+    set.add(p.address.toLowerCase());
+  }
+
+  return set;
 }
 
 function threadById(
@@ -742,8 +835,11 @@ function insertEmailIntoThread(
     messageId,
     children: [],
   };
-  const parentId = findParentId(email);
-  const attempt = insertUnderParent(thread.root, newNode, parentId);
+  const parentRawId = findParentId(email);
+  const parentKey = parentRawId
+    ? canonicalMessageId(parentRawId)
+    : undefined;
+  const attempt = insertUnderParent(thread.root, newNode, parentKey);
 
   // If no parent was found in the tree, attach the new node as a
   // direct child of the thread root so the email is never silently
@@ -772,9 +868,9 @@ function insertEmailIntoThread(
 function insertUnderParent(
   node: ThreadNode,
   newNode: ThreadNode,
-  parentId: string | undefined,
+  parentKey: string | undefined,
 ): { node: ThreadNode; inserted: boolean } {
-  if (parentId && node.messageId === parentId) {
+  if (parentKey && canonicalMessageId(node.messageId) === parentKey) {
     return {
       node: {
         ...node,
@@ -786,7 +882,7 @@ function insertUnderParent(
 
   let inserted = false;
   const newChildren = node.children.map((c) => {
-    const result = insertUnderParent(c, newNode, parentId);
+    const result = insertUnderParent(c, newNode, parentKey);
 
     if (result.inserted) inserted = true;
 
