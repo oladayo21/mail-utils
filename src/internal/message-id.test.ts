@@ -39,6 +39,18 @@ describe("generateMessageId", () => {
     expect(id.endsWith("@example.com>")).toBe(true);
   });
 
+  it("normalizes IDN domains to punycode", () => {
+    const id = generateMessageId("münchen.de");
+
+    expect(id.endsWith("@xn--mnchen-3ya.de>")).toBe(true);
+  });
+
+  it("lowercases ASCII domains", () => {
+    const id = generateMessageId("Example.COM");
+
+    expect(id.endsWith("@example.com>")).toBe(true);
+  });
+
   it.each([
     ["empty string", ""],
     ["only whitespace", "   "],
