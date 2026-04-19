@@ -1,0 +1,20 @@
+{
+  "name": "@oflabs/mail-utils",
+  "version": "0.1.0",
+  "license": "MIT",
+  "exports": "./src/index.ts",
+  "publish": {
+    "include": [
+      "src/**/*.ts",
+      "README.md",
+      "LICENSE",
+      "jsr.json"
+    ],
+    "exclude": [
+      "src/**/*.test.ts",
+      "src/**/*.spec.ts",
+      "src/**/__fixtures__/**",
+      "src/**/__tests__/**"
+    ]
+  }
+}
