@@ -1,4 +1,30 @@
-// @oflabs/mail-utils — platform-agnostic email utilities.
-// Named re-exports live here once modules land. See PRD.md and issues.
+/**
+ * Platform-agnostic TypeScript utilities for email. Shipped modules so
+ * far: address parsing, formatting, validation, and list utilities.
+ * Parsing, threading, and composition modules are planned — track
+ * progress at https://github.com/oladayo21/mail-utils/issues.
+ *
+ * @example
+ * ```ts
+ * import { parseAddressList, formatAddress } from "@oflabs/mail-utils";
+ *
+ * const addrs = parseAddressList(
+ *   "Ada <ada@example.com>, Grace <grace@example.com>",
+ * );
+ * addrs.map(formatAddress);
+ * ```
+ *
+ * @module
+ */
 
-export {};
+export type { EmailAddress } from "./types.ts";
+
+export {
+  deduplicateAddresses,
+  excludeAddresses,
+  formatAddress,
+  isValidAddressList,
+  isValidSingleAddress,
+  parseAddress,
+  parseAddressList,
+} from "./addressing.ts";

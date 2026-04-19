@@ -109,7 +109,7 @@ A single TypeScript utility package — `mail-utils` — with named-export, pure
 10. `buildThreads` dedup by Message-ID with deterministic scoring (`html` +3, `text` +2, attachments +1, more headers tiebreak, first-occurrence stable tiebreak) — not last-write-wins.
 11. Address parsing split: `parseAddressList` (plural), `parseAddress` (single or undefined). Validation split: `isValidSingleAddress`, `isValidAddressList`.
 12. `createForward` uses the quoted-forward style (Style A), not `.eml`-attachment style. Body = `options.body` + attribution + `quoteBody(original)`. Attachments copied from original.
-13. Verification tasks for implementation time: confirm `postal-mime`'s `decodeWords` is a public export (inline an RFC 2047 decoder if not); confirm `mimetext` emits CRLF (post-process `raw` if not).
+13. Verification tasks for implementation time: confirm `mimetext` emits CRLF (post-process `raw` if not). Note: `postal-mime` **does** publicly export `decodeWords` (verified 2026-04-19, v2.7.4) — use it directly for RFC 2047 display-name decoding; do not inline a parallel decoder.
 
 ### Stack
 
