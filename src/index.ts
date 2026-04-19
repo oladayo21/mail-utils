@@ -17,7 +17,12 @@
  * @module
  */
 
-export type { EmailAddress } from "./types.ts";
+export type {
+  Attachment,
+  EmailAddress,
+  ParsedEmail,
+  ThreadingHeaders,
+} from "./types.ts";
 
 export {
   deduplicateAddresses,
@@ -28,3 +33,5 @@ export {
   parseAddress,
   parseAddressList,
 } from "./addressing.ts";
+
+export { extractThreadingHeaders, parseMessage } from "./parsing.ts";
