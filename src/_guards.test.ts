@@ -6,7 +6,7 @@
 // Tests themselves are allowed to use node built-ins; only production
 // files (non-`.test.ts`) are scanned.
 
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { readFileSync, readdirSync, lstatSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 const SRC_ROOT = new URL("../src/", import.meta.url).pathname;
@@ -18,9 +18,21 @@ function walkSources(): SourceFile[] {
 
   function walk(dir: string, prefix: string): void {
     for (const entry of readdirSync(dir)) {
-      const full = `${dir}${entry}`;
+      // Skip hidden dirs and node_modules just in case someone ever
+      // symlinks one into src/.
+      if (entry.startsWith(".") || entry === "node_modules") {
+        continue;
+      }
 
-      if (statSync(full).isDirectory()) {
+      const full = `${dir}${entry}`;
+      // lstat so we don't follow symlinks — a loop would hang the run.
+      const info = lstatSync(full);
+
+      if (info.isSymbolicLink()) {
+        continue;
+      }
+
+      if (info.isDirectory()) {
         walk(`${full}/`, `${prefix}${entry}/`);
 
         continue;
@@ -49,56 +61,129 @@ function walkSources(): SourceFile[] {
 
 const SOURCES = walkSources();
 
+// Every Node.js core module — both as `node:*` specifier and (on
+// older style) as a bare specifier. A bare `from "fs"` ships a
+// platform-locked dep just as surely as `from "node:fs"` does, so
+// both forms are forbidden.
+const NODE_BUILTINS = [
+  "assert",
+  "async_hooks",
+  "buffer",
+  "child_process",
+  "cluster",
+  "console",
+  "constants",
+  "crypto",
+  "dgram",
+  "diagnostics_channel",
+  "dns",
+  "domain",
+  "events",
+  "fs",
+  "fs/promises",
+  "http",
+  "http2",
+  "https",
+  "inspector",
+  "module",
+  "net",
+  "os",
+  "path",
+  "path/posix",
+  "path/win32",
+  "perf_hooks",
+  "process",
+  "punycode",
+  "querystring",
+  "readline",
+  "repl",
+  "stream",
+  "stream/promises",
+  "stream/web",
+  "string_decoder",
+  "timers",
+  "timers/promises",
+  "tls",
+  "trace_events",
+  "tty",
+  "url",
+  "util",
+  "v8",
+  "vm",
+  "wasi",
+  "worker_threads",
+  "zlib",
+];
+
+function escapeForRegex(raw: string): string {
+  return raw.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+const SPECIFIER = `(?:node:[\\w/-]+|${NODE_BUILTINS.map(escapeForRegex).join(
+  "|",
+)})`;
+
+// Catches every import shape: `from "x"`, `import "x"`, dynamic
+// `import("x")`, CJS `require("x")`, and `export * from "x"`
+// (which goes through the same `from` branch).
+const NODE_IMPORT_PATTERN = new RegExp(
+  `(?:from\\s+|import\\s+|import\\s*\\(\\s*|require\\s*\\(\\s*)['"]${SPECIFIER}['"]`,
+  "g",
+);
+
 describe("cross-cutting guards — platform-agnostic surface", () => {
-  it("discovers production sources (sanity)", () => {
+  it("discovers production sources including the public barrel (sanity)", () => {
     expect(SOURCES.length).toBeGreaterThan(0);
+    // Silent-walk-regression guard: if the walk breaks, every scan
+    // below trivially passes — anchor the sanity check to a file we
+    // know must exist.
+    expect(SOURCES.map((f) => f.relative)).toContain("index.ts");
   });
 
-  it("no production file imports from `node:*`", () => {
+  it("no production file imports a Node built-in (any import shape)", () => {
+    const offenders = SOURCES.filter((f) => NODE_IMPORT_PATTERN.test(f.content))
+      .map((f) => f.relative);
+
+    expect(offenders).toEqual([]);
+  });
+
+  it("no production file references the Node `Buffer` identifier", () => {
+    // `\bBuffer\b` catches `Buffer.from`, `new Buffer(`, `instanceof
+    // Buffer`, `globalThis.Buffer`, destructured `const { Buffer }`.
+    const offenders = SOURCES.filter((f) => /\bBuffer\b/.test(f.content)).map(
+      (f) => f.relative,
+    );
+
+    expect(offenders).toEqual([]);
+  });
+
+  it("no production file references `process.` (including via globalThis)", () => {
+    // `\bprocess\b(?=\.)` catches `process.env`, `globalThis.process.X`,
+    // and `global.process.X`.
     const offenders = SOURCES.filter((f) =>
-      /from\s+['"]node:[^'"]+['"]/.test(f.content),
+      /\bprocess\b(?=\.)/.test(f.content),
     ).map((f) => f.relative);
-
-    expect(offenders).toEqual([]);
-  });
-
-  it("no production file uses the Node `Buffer` global", () => {
-    // Match `Buffer.` or `new Buffer(` identifier use, not the word
-    // "Buffer" in a comment or string.
-    const pattern = /(?<![A-Za-z0-9_])Buffer(?:\.|\s*\()/;
-    const offenders = SOURCES.filter((f) => pattern.test(f.content)).map(
-      (f) => f.relative,
-    );
-
-    expect(offenders).toEqual([]);
-  });
-
-  it("no production file reads `process.env` or `process.`", () => {
-    const pattern = /(?<![A-Za-z0-9_])process\./;
-    const offenders = SOURCES.filter((f) => pattern.test(f.content)).map(
-      (f) => f.relative,
-    );
 
     expect(offenders).toEqual([]);
   });
 });
 
 describe("cross-cutting guards — named exports only", () => {
-  it("no production file uses `export default`", () => {
-    const pattern = /^\s*export\s+default\b/m;
-    const offenders = SOURCES.filter((f) => pattern.test(f.content)).map(
-      (f) => f.relative,
-    );
+  it("no production file uses `export default` (any form)", () => {
+    const patterns: ReadonlyArray<RegExp> = [
+      // `export default ...`
+      /^\s*export\s+default\b/m,
+      // `export { default } from ...` or `export { default as foo }`
+      /export\s*\{[^}]*\bdefault\b[^}]*\}/,
+      // `export { foo as default }`
+      /\bas\s+default\b/,
+      // CJS-ish `export = X`
+      /^\s*export\s*=\s*/m,
+    ];
+    const offenders = SOURCES.filter((f) =>
+      patterns.some((p) => p.test(f.content)),
+    ).map((f) => f.relative);
 
     expect(offenders).toEqual([]);
-  });
-
-  it("public barrel (`src/index.ts`) exports named members only", () => {
-    const barrel = SOURCES.find((f) => f.relative === "index.ts");
-
-    expect(barrel).toBeDefined();
-    // No `export default` and no `export =` (CJS-ish syntax) either.
-    expect(/export\s+default\b/.test(barrel!.content)).toBe(false);
-    expect(/export\s*=\s/.test(barrel!.content)).toBe(false);
   });
 });
