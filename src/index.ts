@@ -40,10 +40,18 @@ export {
   parseAddressList,
 } from "./addressing.ts";
 
-export { extractThreadingHeaders, parseMessage } from "./parsing.ts";
+export {
+  DEFAULT_MAX_ATTACHMENT_SIZE,
+  DEFAULT_MAX_BODY_SIZE,
+  DEFAULT_MAX_HEADER_SIZE,
+  extractThreadingHeaders,
+  parseMessage,
+} from "./parsing.ts";
+export type { ParseMessageOptions } from "./parsing.ts";
 
 export {
   extractBody,
+  findOrphanedCidRefs,
   isInlineAttachment,
   listAttachments,
 } from "./content.ts";

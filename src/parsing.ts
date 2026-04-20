@@ -26,6 +26,57 @@ import type {
   ThreadingHeaders,
 } from "./types.ts";
 
+/**
+ * Suggested default cap on the combined size of the header block,
+ * in bytes. Not applied automatically — pass as
+ * {@link ParseMessageOptions.maxHeaderSize} when you want it.
+ *
+ * Mirrors emailengine's baseline (1 MB). Roomy enough for 10+-hop
+ * Received chains and duplicate DKIM-Signatures; tight enough to
+ * reject pathological header-stuffing attacks.
+ */
+export const DEFAULT_MAX_HEADER_SIZE = 1_000_000;
+
+/**
+ * Suggested default cap on a single attachment's decoded payload, in
+ * bytes. Not applied automatically — pass as
+ * {@link ParseMessageOptions.maxAttachmentSize} when you want it.
+ *
+ * Mirrors emailengine's baseline (5 MB).
+ */
+export const DEFAULT_MAX_ATTACHMENT_SIZE = 5_000_000;
+
+/**
+ * Suggested default cap on a single body part's (html or text) byte
+ * length. Not applied automatically — pass as
+ * {@link ParseMessageOptions.maxBodySize} when you want it.
+ *
+ * Mirrors emailengine's baseline (50 MB).
+ */
+export const DEFAULT_MAX_BODY_SIZE = 50_000_000;
+
+/**
+ * Opt-in caps that protect constrained runtimes (Workers, edge
+ * functions) from OOMing on a single pathological email.
+ *
+ * None are enforced by default — set only what you need. `parseMessage`
+ * never throws when a cap is exceeded: it strips the over-size payload
+ * and preserves the metadata (e.g. `Attachment.size`), so the caller
+ * can still see that a part existed and decide how to react.
+ *
+ * @see {@link DEFAULT_MAX_HEADER_SIZE}
+ * @see {@link DEFAULT_MAX_ATTACHMENT_SIZE}
+ * @see {@link DEFAULT_MAX_BODY_SIZE}
+ */
+export type ParseMessageOptions = {
+  /** Byte cap for the combined header block; forwarded to postal-mime. */
+  readonly maxHeaderSize?: number | undefined;
+  /** Byte cap for a single attachment's decoded payload. Over-cap attachments come back with `content` undefined. */
+  readonly maxAttachmentSize?: number | undefined;
+  /** Byte cap for a single body part (`html` or `text`). Over-cap bodies come back `undefined`. */
+  readonly maxBodySize?: number | undefined;
+};
+
 function mapMailbox(mailbox: PMMailbox): EmailAddress {
   const trimmed = mailbox.name?.trim();
 
@@ -130,11 +181,19 @@ function toArrayBuffer(
   return content;
 }
 
-function mapAttachment(att: PMAttachment): Attachment {
+function mapAttachment(
+  att: PMAttachment,
+  maxAttachmentSize: number | undefined,
+): Attachment {
   const content = toArrayBuffer(att.content);
   const size = content?.byteLength ?? 0;
   const disposition: "attachment" | "inline" =
     att.disposition === "inline" ? "inline" : "attachment";
+  // Strip oversized payloads rather than throwing — preserves metadata
+  // (filename, size) so the caller can surface "attachment too large"
+  // without paying the memory cost.
+  const keepContent =
+    maxAttachmentSize === undefined || size <= maxAttachmentSize;
 
   return {
     filename: att.filename ?? undefined,
@@ -142,7 +201,7 @@ function mapAttachment(att: PMAttachment): Attachment {
     disposition,
     contentId: att.contentId,
     size,
-    content,
+    content: keepContent ? content : undefined,
   };
 }
 
@@ -169,7 +228,34 @@ function buildHeaders(list: PMHeader[] | undefined): Map<string, string[]> {
   return map;
 }
 
-function toParsedEmail(p: PMEmail): ParsedEmail {
+function withinBodySize(
+  body: string | undefined,
+  cap: number | undefined,
+): string | undefined {
+  if (body === undefined || cap === undefined) {
+    return body;
+  }
+
+  // UTF-8 is at most 3 bytes per UTF-16 code unit for the BMP and up
+  // to 4 for surrogate pairs — averaged as 3 that's a safe upper
+  // bound. Skip the full encode for the common under-cap case so we
+  // don't allocate a 50 MB Uint8Array on a 50 MB body just to
+  // measure it.
+  if (body.length * 3 <= cap) {
+    return body;
+  }
+
+  const bytes = new TextEncoder().encode(body).byteLength;
+
+  return bytes <= cap ? body : undefined;
+}
+
+function toParsedEmail(p: PMEmail, options: ParseMessageOptions): ParsedEmail {
+  const maxAttachmentSize = options.maxAttachmentSize;
+  const maxBodySize = options.maxBodySize;
+  const html = withinBodySize(p.html, maxBodySize);
+  const text = withinBodySize(p.text, maxBodySize);
+
   return {
     messageId: p.messageId,
     inReplyTo: p.inReplyTo,
@@ -181,9 +267,11 @@ function toParsedEmail(p: PMEmail): ParsedEmail {
     bcc: flattenAddresses(p.bcc),
     replyTo: firstAddress(p.replyTo),
     date: parseDate(p.date),
-    html: p.html,
-    text: p.text,
-    attachments: (p.attachments ?? []).map(mapAttachment),
+    html,
+    text,
+    attachments: (p.attachments ?? []).map((a) =>
+      mapAttachment(a, maxAttachmentSize),
+    ),
     headers: buildHeaders(p.headers),
   };
 }
@@ -197,29 +285,41 @@ function toParsedEmail(p: PMEmail): ParsedEmail {
  * `undefined`, empty collections become `[]`, and an unparseable `Date:`
  * header yields `undefined`.
  *
+ * Opt-in caps via {@link ParseMessageOptions} protect constrained
+ * runtimes from OOMing on pathological input — see
+ * {@link DEFAULT_MAX_HEADER_SIZE}, {@link DEFAULT_MAX_ATTACHMENT_SIZE},
+ * {@link DEFAULT_MAX_BODY_SIZE} for sensible defaults.
+ *
  * @param raw The email source.
+ * @param options Optional caps on header / body / attachment size.
  * @returns A structured {@link ParsedEmail}.
  * @throws {Error} When `raw` is not recognizable MIME and `postal-mime`
  * cannot produce a parse tree (corrupt envelope, truncated multipart,
- * etc.). Per-field issues do **not** throw.
+ * etc.), or when `options.maxHeaderSize` is set and the header block
+ * exceeds it (postal-mime enforces). Per-field issues do **not** throw.
  *
  * @example
  * ```ts
- * import { parseMessage } from "@oflabs/mail-utils";
+ * import { parseMessage, DEFAULT_MAX_ATTACHMENT_SIZE } from "@oflabs/mail-utils";
  *
  * declare const rawEml: string;
- * const email = await parseMessage(rawEml);
- * const { to, from, subject } = email;
+ * const email = await parseMessage(rawEml, {
+ *   maxAttachmentSize: DEFAULT_MAX_ATTACHMENT_SIZE,
+ * });
  * ```
  */
 export async function parseMessage(
   raw: string | ArrayBuffer,
+  options: ParseMessageOptions = {},
 ): Promise<ParsedEmail> {
   const parsed = await PostalMime.parse(raw, {
     attachmentEncoding: "arraybuffer",
+    ...(options.maxHeaderSize !== undefined
+      ? { maxHeadersSize: options.maxHeaderSize }
+      : {}),
   });
 
-  return toParsedEmail(parsed);
+  return toParsedEmail(parsed, options);
 }
 
 /**
