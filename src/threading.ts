@@ -5,7 +5,7 @@
  *
  * @example
  * ```ts
- * import { buildThreads, parseMessage } from "@oflabs/mail-utils";
+ * import { buildThreads, parseMessage } from "@oflabs/email-utils";
  *
  * const emails = await Promise.all(rawEmls.map(parseMessage));
  * const threads = buildThreads(emails);
@@ -64,7 +64,7 @@ export function normalizeSubject(subject: string): string {
  *
  * @example
  * ```ts
- * import { getThreadId, isOrphanId } from "@oflabs/mail-utils";
+ * import { getThreadId, isOrphanId } from "@oflabs/email-utils";
  *
  * declare const email: ParsedEmail;
  * const id = getThreadId(email);
@@ -112,7 +112,7 @@ export function getThreadId(email: ParsedEmail): string {
  *
  * @example
  * ```ts
- * import { buildThreads, parseMessage } from "@oflabs/mail-utils";
+ * import { buildThreads, parseMessage } from "@oflabs/email-utils";
  *
  * declare const raws: string[];
  * const emails = await Promise.all(raws.map(parseMessage));
@@ -158,7 +158,7 @@ export function buildThreads(
  *
  * @example
  * ```ts
- * import { ingestIntoThreads } from "@oflabs/mail-utils";
+ * import { ingestIntoThreads } from "@oflabs/email-utils";
  *
  * let threads: Thread[] = [];
  *

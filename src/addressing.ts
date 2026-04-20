@@ -6,7 +6,7 @@
  *
  * @example
  * ```ts
- * import { parseAddressList, formatAddress } from "@oflabs/mail-utils";
+ * import { parseAddressList, formatAddress } from "@oflabs/email-utils";
  *
  * const addrs = parseAddressList('"Alice" <alice@example.com>, bob@example.com');
  * addrs.map(formatAddress).join(", ");

@@ -1,4 +1,4 @@
-# @oflabs/mail-utils
+# @oflabs/email-utils
 
 Platform-agnostic TypeScript utilities for email parsing, threading, and composition.
 
@@ -8,14 +8,14 @@ Runs unchanged in Cloudflare Workers, Node.js, Deno, Bun, browsers, and any test
 
 ## Install
 
-Published on [JSR](https://jsr.io/@oflabs/mail-utils).
+Published on [JSR](https://jsr.io/@oflabs/email-utils).
 
 ```sh
-deno add jsr:@oflabs/mail-utils
+deno add jsr:@oflabs/email-utils
 # or
-pnpm dlx jsr add @oflabs/mail-utils
+pnpm dlx jsr add @oflabs/email-utils
 # or
-bunx jsr add @oflabs/mail-utils
+bunx jsr add @oflabs/email-utils
 ```
 
 ## Modules

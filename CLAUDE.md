@@ -1,4 +1,4 @@
-# CLAUDE.md — @oflabs/mail-utils
+# CLAUDE.md — @oflabs/email-utils
 
 Platform-agnostic TS utility library for email parsing, threading, composition. Runs in Workers, Node, Deno, Bun, browsers. No I/O, no storage, no platform bindings.
 
@@ -6,7 +6,7 @@ Platform-agnostic TS utility library for email parsing, threading, composition. 
 
 - **[PRD.md](./PRD.md)** is the authoritative spec. Read it before implementing anything.
 - Spec decisions from the /grll-me interview live in `~/.claude/projects/-Users-oladayo-fagbemi-code-oflabs-email-utils/memory/` — check MEMORY.md for the index. Do not re-litigate decisions captured there.
-- GitHub issues tagged `prd/mail-utils-v1` = the work queue. Issues 1–8.
+- GitHub issues tagged `prd/email-utils-v1` = the work queue. Issues 1–8.
 
 ## Design rules (non-negotiable)
 
@@ -21,7 +21,7 @@ Platform-agnostic TS utility library for email parsing, threading, composition. 
 
 ## Publishing
 
-- JSR only at `@oflabs/mail-utils`. No npm, no `dist/`, no build step.
+- JSR only at `@oflabs/email-utils`. No npm, no `dist/`, no build step.
 - `tsconfig.json` has `noEmit: true` — tsc is type-check only. JSR consumes raw `.ts`.
 - Release: bump `jsr.json` version → commit → `git tag v0.x.y && git push --tags` → OIDC-authenticated GitHub Actions publishes.
 - Local dry-run: `make publish-jsr-dry`. Catches slow-types before CI.

@@ -2,11 +2,11 @@
  * Platform-agnostic TypeScript utilities for email. Shipped modules so
  * far: address parsing, formatting, validation, and list utilities.
  * Parsing, threading, and composition modules are planned — track
- * progress at https://github.com/oladayo21/mail-utils/issues.
+ * progress at https://github.com/oflabs44/email-utils/issues.
  *
  * @example
  * ```ts
- * import { parseAddressList, formatAddress } from "@oflabs/mail-utils";
+ * import { parseAddressList, formatAddress } from "@oflabs/email-utils";
  *
  * const addrs = parseAddressList(
  *   "Ada <ada@example.com>, Grace <grace@example.com>",

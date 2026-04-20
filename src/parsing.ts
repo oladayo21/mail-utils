@@ -300,7 +300,7 @@ function toParsedEmail(p: PMEmail, options: ParseMessageOptions): ParsedEmail {
  *
  * @example
  * ```ts
- * import { parseMessage, DEFAULT_MAX_ATTACHMENT_SIZE } from "@oflabs/mail-utils";
+ * import { parseMessage, DEFAULT_MAX_ATTACHMENT_SIZE } from "@oflabs/email-utils";
  *
  * declare const rawEml: string;
  * const email = await parseMessage(rawEml, {
