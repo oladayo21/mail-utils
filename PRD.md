@@ -1,6 +1,6 @@
-# PRD: `mail-utils` — Platform-agnostic Email Utility Library
+# PRD: `email-utils` — Platform-agnostic Email Utility Library
 
-**PRD slug:** `prd/mail-utils-v1`
+**PRD slug:** `prd/email-utils-v1`
 
 ---
 
@@ -12,7 +12,7 @@ There is no TypeScript library today that is (a) genuinely platform-agnostic, (b
 
 ## Solution
 
-A single TypeScript utility package — `mail-utils` — with named-export, pure-function APIs for parsing, threading, composition, addressing, and content inspection. Zero I/O, zero platform bindings, zero Node built-ins. Runs unchanged in Cloudflare Workers, Node, Deno, Bun, browsers, and test runners. Every function is synchronous except `parseMessage`. Every behavior is documented, tested against a corpus of real-world gnarly emails, and free of silent data loss (no dropped headers, no lost attachments, no BCC leaks, no thread truncation).
+A single TypeScript utility package — `email-utils` — with named-export, pure-function APIs for parsing, threading, composition, addressing, and content inspection. Zero I/O, zero platform bindings, zero Node built-ins. Runs unchanged in Cloudflare Workers, Node, Deno, Bun, browsers, and test runners. Every function is synchronous except `parseMessage`. Every behavior is documented, tested against a corpus of real-world gnarly emails, and free of silent data loss (no dropped headers, no lost attachments, no BCC leaks, no thread truncation).
 
 ## User Stories
 
@@ -123,7 +123,7 @@ A single TypeScript utility package — `mail-utils` — with named-export, pure
 
 ### Publishing
 
-- Registry: **JSR only** at `@oflabs/mail-utils`. No npm. No built `dist/`.
+- Registry: **JSR only** at `@oflabs/email-utils`. No npm. No built `dist/`.
 - `jsr.json` is the publish manifest; `exports` points at `./src/index.ts`.
 - Authenticated release via GitHub Actions OIDC (`id-token: write`) triggered on `v*` tag push.
 - Local dry-run: `make publish-jsr-dry`. Local real publish (if ever needed): `make publish-jsr`, which interactively authenticates.
@@ -184,6 +184,6 @@ A single TypeScript utility package — `mail-utils` — with named-export, pure
 ## Further Notes
 
 - **Versioning:** v1.0.0 is this release. Breaking changes in types (`headers` shape, `Attachment.content` optionality, `ThreadNode` shape) are intentional; no earlier version exists to break.
-- **Package structure:** a single package at repo root is simpler than the `packages/mail-utils/` nested layout in the original spec unless a monorepo materializes. Use the flat layout; revisit if multiple packages emerge.
+- **Package structure:** a single package at repo root is simpler than the `packages/email-utils/` nested layout in the original spec unless a monorepo materializes. Use the flat layout; revisit if multiple packages emerge.
 - **Backwards-compat with the original spec:** the resolved decisions intentionally diverge from the literal text of the original spec where it was under-specified or contradictory. The decisions here are authoritative.
 - **Docs:** a `README.md` with a one-liner per function and a usage example per module is in scope. Extended API docs can be generated from TSDoc later; not blocking v1.

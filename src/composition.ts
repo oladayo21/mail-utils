@@ -10,7 +10,7 @@
  *
  * @example
  * ```ts
- * import { createReply, parseMessage } from "@oflabs/mail-utils";
+ * import { createReply, parseMessage } from "@oflabs/email-utils";
  *
  * declare const rawEml: string;
  * const incoming = await parseMessage(rawEml);

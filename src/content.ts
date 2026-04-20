@@ -10,7 +10,7 @@
  *   extractBody,
  *   listAttachments,
  *   isInlineAttachment,
- * } from "@oflabs/mail-utils";
+ * } from "@oflabs/email-utils";
  *
  * const body = extractBody(email);        // { html?, text? }
  * const files = listAttachments(email);   // user-facing attachments only
