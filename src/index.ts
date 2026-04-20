@@ -1,8 +1,9 @@
 /**
- * Platform-agnostic TypeScript utilities for email. Shipped modules so
- * far: address parsing, formatting, validation, and list utilities.
- * Parsing, threading, and composition modules are planned — track
- * progress at https://github.com/oflabs44/email-utils/issues.
+ * Platform-agnostic TypeScript utilities for email. Runs anywhere
+ * modern JS runs — Workers, Node, Deno, Bun, browsers — with no
+ * platform bindings and no I/O. Covers address parsing and
+ * formatting, MIME parsing, body and attachment extraction,
+ * JWZ-style threading, and reply/forward/draft composition.
  *
  * @example
  * ```ts
