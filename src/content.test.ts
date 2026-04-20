@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   extractBody,
+  findOrphanedCidRefs,
   isInlineAttachment,
   listAttachments,
 } from "./content.ts";
@@ -163,5 +164,67 @@ describe("listAttachments", () => {
     ];
 
     expect(listAttachments(makeEmail({ attachments }))).toEqual([]);
+  });
+});
+
+describe("findOrphanedCidRefs", () => {
+  it("returns [] when the email has no html body", () => {
+    expect(findOrphanedCidRefs(makeEmail({ text: "plain" }))).toEqual([]);
+  });
+
+  it("returns [] when every cid reference is backed by an inline attachment", () => {
+    const html = `<p>top</p><img src="cid:logo@x"><img src="cid:sig@x">`;
+    const attachments: Attachment[] = [
+      makeAttachment({ disposition: "inline", contentId: "<logo@x>" }),
+      makeAttachment({ disposition: "inline", contentId: "<sig@x>" }),
+    ];
+
+    expect(findOrphanedCidRefs(makeEmail({ html, attachments }))).toEqual([]);
+  });
+
+  it("returns orphaned cid tokens in first-seen order, deduplicated", () => {
+    const html = `<img src="cid:logo@x"><img src="cid:missing@x"><img src="cid:missing@x">`;
+    const attachments: Attachment[] = [
+      makeAttachment({ disposition: "inline", contentId: "<logo@x>" }),
+    ];
+
+    expect(findOrphanedCidRefs(makeEmail({ html, attachments }))).toEqual([
+      "missing@x",
+    ]);
+  });
+
+  it("matches cid tokens whether the inline attachment's contentId has brackets or not", () => {
+    const html = `<img src="cid:a@x"><img src="cid:b@x">`;
+    const attachments: Attachment[] = [
+      makeAttachment({ disposition: "inline", contentId: "<a@x>" }),
+      makeAttachment({ disposition: "inline", contentId: "b@x" }),
+    ];
+
+    expect(findOrphanedCidRefs(makeEmail({ html, attachments }))).toEqual([]);
+  });
+
+  it("treats non-inline attachments as non-backing even when they share a contentId", () => {
+    const html = `<img src="cid:payload@x">`;
+    const attachments: Attachment[] = [
+      makeAttachment({ disposition: "attachment", contentId: "<payload@x>" }),
+    ];
+
+    expect(findOrphanedCidRefs(makeEmail({ html, attachments }))).toEqual([
+      "payload@x",
+    ]);
+  });
+
+  it("extracts cid tokens from multiple quote styles and attribute contexts", () => {
+    const html = `
+      <img src="cid:one@x">
+      <img src='cid:two@x'>
+      <a href="cid:three@x">x</a>
+    `;
+
+    expect(findOrphanedCidRefs(makeEmail({ html }))).toEqual([
+      "one@x",
+      "two@x",
+      "three@x",
+    ]);
   });
 });

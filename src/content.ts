@@ -95,3 +95,74 @@ export function isInlineAttachment(attachment: Attachment): boolean {
 export function listAttachments(email: ParsedEmail): Attachment[] {
   return email.attachments.filter((a) => !isInlineAttachment(a));
 }
+
+/**
+ * Find `cid:` references in the HTML body that are **not** backed by
+ * an inline attachment on the same email.
+ *
+ * Useful before forwarding or rendering: an orphaned `cid:` pointer
+ * will render as a broken image in the recipient's client because the
+ * referenced part was stripped by a relay, stored externally, or
+ * otherwise missing. Callers can rewrite them to data URIs / fallback
+ * placeholders, or log a warning.
+ *
+ * Returns a de-duplicated list of cid tokens (bare, no `cid:` prefix,
+ * no angle brackets) in first-seen order. An empty array means every
+ * `cid:` reference has a matching inline attachment.
+ *
+ * @param email The email to inspect.
+ * @returns Bare cid tokens referenced from `email.html` without a
+ * matching inline attachment.
+ *
+ * @example
+ * ```ts
+ * const orphans = findOrphanedCidRefs(email);
+ * if (orphans.length > 0) {
+ *   console.warn("forwarding with broken inline images:", orphans);
+ * }
+ * ```
+ */
+export function findOrphanedCidRefs(email: ParsedEmail): string[] {
+  if (!email.html) {
+    return [];
+  }
+
+  const backed = new Set<string>();
+
+  for (const att of email.attachments) {
+    if (!isInlineAttachment(att) || att.contentId === undefined) {
+      continue;
+    }
+
+    backed.add(stripAngleBrackets(att.contentId));
+  }
+
+  const orphans: string[] = [];
+  const seen = new Set<string>();
+  const pattern = /cid:([^\s"'>)]+)/gi;
+
+  for (const match of email.html.matchAll(pattern)) {
+    const ref = match[1];
+
+    if (!ref || seen.has(ref)) {
+      continue;
+    }
+
+    seen.add(ref);
+
+    if (!backed.has(ref)) {
+      orphans.push(ref);
+    }
+  }
+
+  return orphans;
+}
+
+function stripAngleBrackets(id: string): string {
+  let s = id.trim();
+
+  if (s.startsWith("<")) s = s.slice(1);
+  if (s.endsWith(">")) s = s.slice(0, -1);
+
+  return s;
+}
