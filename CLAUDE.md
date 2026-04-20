@@ -23,8 +23,9 @@ Platform-agnostic TS utility library for email parsing, threading, composition. 
 
 - JSR only at `@oflabs/email-utils`. No npm, no `dist/`, no build step.
 - `tsconfig.json` has `noEmit: true` — tsc is type-check only. JSR consumes raw `.ts`.
-- Release: bump `jsr.json` version → commit → `git tag v0.x.y && git push --tags` → OIDC-authenticated GitHub Actions publishes.
-- Local dry-run: `make publish-jsr-dry`. Catches slow-types before CI.
+- Release: bump `jsr.json` version (and `package.json` to match) → commit → `git tag v0.x.y && git push --tags` → `.github/workflows/publish-jsr.yml` runs on the `v*` tag, authenticates via GitHub Actions OIDC (no `JSR_API_KEY` secret), and publishes.
+- Local dry-run: `make publish-jsr-dry`. Catches slow-types before CI. Also runs in `.github/workflows/ci.yml` on every PR.
+- **One-time scope setup (already done / redo if the scope is ever deleted):** create `@oflabs` at <https://jsr.io/new>, link to the `oflabs44` GitHub account, and grant publish permission to `oflabs44/email-utils`. After that, publishes are fully automated by tag.
 
 ## Per-issue workflow
 
