@@ -139,7 +139,11 @@ export function findOrphanedCidRefs(email: ParsedEmail): string[] {
 
   const orphans: string[] = [];
   const seen = new Set<string>();
-  const pattern = /cid:([^\s"'>)]+)/gi;
+
+  // Require cid: to not follow a letter/digit/slash so `http://host/cid:foo`
+  // doesn't match. Token chars exclude common terminators so
+  // `url(cid:x);` and `"cid:x",` don't pick up punctuation.
+  const pattern = /(?<![A-Za-z0-9/])cid:([^\s"'>);,]+)/gi;
 
   for (const match of email.html.matchAll(pattern)) {
     const ref = match[1];
@@ -159,10 +163,5 @@ export function findOrphanedCidRefs(email: ParsedEmail): string[] {
 }
 
 function stripAngleBrackets(id: string): string {
-  let s = id.trim();
-
-  if (s.startsWith("<")) s = s.slice(1);
-  if (s.endsWith(">")) s = s.slice(0, -1);
-
-  return s;
+  return id.trim().replace(/^<|>$/g, "");
 }

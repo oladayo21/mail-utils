@@ -227,4 +227,53 @@ describe("findOrphanedCidRefs", () => {
       "three@x",
     ]);
   });
+
+  it("preserves first-seen order across multiple distinct orphans", () => {
+    const html = `
+      <img src="cid:b@x">
+      <img src="cid:a@x">
+      <img src="cid:c@x">
+      <img src="cid:a@x">
+    `;
+
+    expect(findOrphanedCidRefs(makeEmail({ html }))).toEqual([
+      "b@x",
+      "a@x",
+      "c@x",
+    ]);
+  });
+
+  it("strips common trailing punctuation from the extracted token", () => {
+    // Real emails embed cid refs in css and inline scripts, where
+    // `;` or `,` are the natural terminators — they shouldn't become
+    // part of the token.
+    const html = `<style>.a{background:url(cid:foo@x);}</style>`;
+    const attachments: Attachment[] = [
+      makeAttachment({ disposition: "inline", contentId: "<foo@x>" }),
+    ];
+
+    expect(findOrphanedCidRefs(makeEmail({ html, attachments }))).toEqual([]);
+  });
+
+  it("ignores http URLs that contain `cid:` inside the path", () => {
+    // Without the preceding-slash guard, `http://example.com/cid:foo`
+    // would be misreported as an orphan ref.
+    const html = `<a href="http://example.com/cid:not-really@x">x</a>`;
+
+    expect(findOrphanedCidRefs(makeEmail({ html }))).toEqual([]);
+  });
+
+  it("treats cid tokens as case-sensitive (RFC 2392 unique-id portion)", () => {
+    // `cid:` scheme is case-insensitive; the unique-id portion is
+    // case-sensitive per RFC 2392. A mismatched case should surface
+    // as an orphan rather than silently matching.
+    const html = `<img src="CID:Logo@X">`;
+    const attachments: Attachment[] = [
+      makeAttachment({ disposition: "inline", contentId: "<logo@x>" }),
+    ];
+
+    expect(findOrphanedCidRefs(makeEmail({ html, attachments }))).toEqual([
+      "Logo@X",
+    ]);
+  });
 });

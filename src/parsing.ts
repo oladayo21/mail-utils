@@ -201,7 +201,7 @@ function mapAttachment(
     disposition,
     contentId: att.contentId,
     size,
-    ...(keepContent && content !== undefined ? { content } : {}),
+    content: keepContent ? content : undefined,
   };
 }
 
@@ -236,7 +236,15 @@ function withinBodySize(
     return body;
   }
 
-  // UTF-8 byte length so multi-byte scripts don't slip past the cap.
+  // UTF-8 is at most 3 bytes per UTF-16 code unit for the BMP and up
+  // to 4 for surrogate pairs — averaged as 3 that's a safe upper
+  // bound. Skip the full encode for the common under-cap case so we
+  // don't allocate a 50 MB Uint8Array on a 50 MB body just to
+  // measure it.
+  if (body.length * 3 <= cap) {
+    return body;
+  }
+
   const bytes = new TextEncoder().encode(body).byteLength;
 
   return bytes <= cap ? body : undefined;

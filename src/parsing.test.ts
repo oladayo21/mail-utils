@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { createForward } from "./composition.ts";
 import {
   DEFAULT_MAX_ATTACHMENT_SIZE,
   DEFAULT_MAX_BODY_SIZE,
@@ -771,6 +772,121 @@ describe("parseMessage — defensive caps", () => {
     expect(email.attachments[0]?.content).toBeDefined();
     expect(email.attachments[0]?.size).toBeGreaterThanOrEqual(128);
     expect(email.attachments[0]?.size).toBeLessThanOrEqual(1024);
+  });
+
+  it("applies maxBodySize independently to html and text branches", async () => {
+    // Short text, very long html. The cap drops html but keeps text.
+    const shortText = "short";
+    const longHtml = `<p>${"x".repeat(2048)}</p>`;
+    const raw = [
+      "From: ada@example.com",
+      "Subject: Mixed",
+      "Content-Type: multipart/alternative; boundary=BOUND",
+      "",
+      "--BOUND",
+      "Content-Type: text/plain",
+      "",
+      shortText,
+      "--BOUND",
+      "Content-Type: text/html",
+      "",
+      longHtml,
+      "--BOUND--",
+      "",
+    ].join("\r\n");
+
+    const email = await parseMessage(raw, { maxBodySize: 256 });
+
+    expect(email.text?.trim()).toBe(shortText);
+    expect(email.html).toBeUndefined();
+
+    // Flip the sides: short html, long text → text stripped, html kept.
+    const shortHtml = "<p>hi</p>";
+    const longText = "y".repeat(2048);
+    const raw2 = [
+      "From: ada@example.com",
+      "Subject: Mixed",
+      "Content-Type: multipart/alternative; boundary=BOUND",
+      "",
+      "--BOUND",
+      "Content-Type: text/plain",
+      "",
+      longText,
+      "--BOUND",
+      "Content-Type: text/html",
+      "",
+      shortHtml,
+      "--BOUND--",
+      "",
+    ].join("\r\n");
+
+    const email2 = await parseMessage(raw2, { maxBodySize: 256 });
+
+    expect(email2.text).toBeUndefined();
+    expect(email2.html).toContain("<p>hi</p>");
+  });
+
+  it("preserves every attachment metadata field when content is stripped", async () => {
+    const attachmentBody = "z".repeat(1024);
+    const raw = [
+      "From: ada@example.com",
+      "Subject: inline big",
+      "Content-Type: multipart/related; boundary=BOUND",
+      "",
+      "--BOUND",
+      'Content-Type: text/html; charset="utf-8"',
+      "",
+      '<p><img src="cid:logo@x"></p>',
+      "--BOUND",
+      'Content-Type: image/png; name="logo.png"',
+      'Content-Disposition: inline; filename="logo.png"',
+      "Content-ID: <logo@x>",
+      "",
+      attachmentBody,
+      "--BOUND--",
+      "",
+    ].join("\r\n");
+
+    const email = await parseMessage(raw, { maxAttachmentSize: 256 });
+    const att = email.attachments[0]!;
+
+    expect(att.filename).toBe("logo.png");
+    expect(att.mimeType).toBe("image/png");
+    expect(att.disposition).toBe("inline");
+    expect(att.contentId).toBe("<logo@x>");
+    expect(att.size).toBeGreaterThan(256);
+    expect(att.content).toBeUndefined();
+  });
+
+  it("createForward surfaces the opt-in contract: stripped attachments throw as caller error", async () => {
+    const attachmentBody = "x".repeat(1024);
+    const raw = [
+      "From: ada@example.com",
+      "To: grace@example.com",
+      "Subject: Heavy",
+      "Content-Type: multipart/mixed; boundary=BOUND",
+      "",
+      "--BOUND",
+      "Content-Type: text/plain",
+      "",
+      "note",
+      "--BOUND",
+      'Content-Type: application/octet-stream; name="data.bin"',
+      'Content-Disposition: attachment; filename="data.bin"',
+      "",
+      attachmentBody,
+      "--BOUND--",
+      "",
+    ].join("\r\n");
+
+    const email = await parseMessage(raw, { maxAttachmentSize: 256 });
+
+    expect(() =>
+      createForward(email, {
+        from: { address: "bob@example.com" },
+        to: [{ address: "carol@example.com" }],
+      }),
+    ).toThrow(/createForward requires Attachment.content/);
   });
 
   it("forwards maxHeaderSize to postal-mime, which throws on over-cap headers", async () => {
