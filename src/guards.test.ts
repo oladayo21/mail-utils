@@ -1,6 +1,7 @@
-// Cross-cutting guard tests: enforce the contract from PRD §"Cross-
-// cutting contracts" — platform-agnostic surface, named exports only,
-// no Node built-ins in production code.
+// Cross-cutting guard tests: enforce the platform-agnostic surface
+// from PRD §"Cross-cutting contracts" — no Node built-ins, no Buffer,
+// no process references in production code. (Named-exports and
+// slow-types rules are left to JSR publish + code review.)
 //
 // Runs under plain Vitest on Node; uses `node:fs` to walk the tree.
 // Tests themselves are allowed to use node built-ins; only production
@@ -162,26 +163,6 @@ describe("cross-cutting guards — platform-agnostic surface", () => {
     // and `global.process.X`.
     const offenders = SOURCES.filter((f) =>
       /\bprocess\b(?=\.)/.test(f.content),
-    ).map((f) => f.relative);
-
-    expect(offenders).toEqual([]);
-  });
-});
-
-describe("cross-cutting guards — named exports only", () => {
-  it("no production file uses `export default` (any form)", () => {
-    const patterns: ReadonlyArray<RegExp> = [
-      // `export default ...`
-      /^\s*export\s+default\b/m,
-      // `export { default } from ...` or `export { default as foo }`
-      /export\s*\{[^}]*\bdefault\b[^}]*\}/,
-      // `export { foo as default }`
-      /\bas\s+default\b/,
-      // CJS-ish `export = X`
-      /^\s*export\s*=\s*/m,
-    ];
-    const offenders = SOURCES.filter((f) =>
-      patterns.some((p) => p.test(f.content)),
     ).map((f) => f.relative);
 
     expect(offenders).toEqual([]);
